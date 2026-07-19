@@ -15,4 +15,23 @@ Node.js · Cheerio · Supabase (PostgreSQL)
 
 ## Design notes
 
-**Retry logic** — Each fetch retries up to 2 times with
+**Retry logic** — Each fetch retries up to 2 times with increasing delays (2s, 4s) and a 10-second timeout. Scraping targets go down or rate-limit; the pipeline shouldn't.
+
+**Per-site isolation** — Each source has its own parser function. When one site changes its HTML structure, the others keep working.
+
+**Deduplication** — A unique constraint on the headline column with upsert and ignoreDuplicates. Handled by the database rather than in application memory, so it survives restarts.
+
+**Parallel execution** — All sources are scraped concurrently with Promise.all rather than sequentially.
+
+## Setup
+
+Install dependencies with npm install, then set these environment variables:
+
+SUPABASE_URL — your Supabase project URL
+SUPABASE_SERVICE_KEY — your Supabase service key
+
+Run with: node scraper.js
+
+## Schema
+
+The scraper writes to a news_items table with columns for headline (unique), source, symbol, impact, ai_comment, and created_at.
