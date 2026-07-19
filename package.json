@@ -1,0 +1,13 @@
+{
+  "name": "oddex-scraper",
+  "version": "1.0.0",
+  "description": "News scraper for ODDEX VIBE - Cheerio + Supabase",
+  "main": "scraper.js",
+  "scripts": {
+    "start": "node scraper.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "cheerio": "^1.0.0"
+  }
+}
