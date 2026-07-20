@@ -1,14 +1,29 @@
 // scraper.js — ODDEX VIBE news scraper
 // Real HTML scraping (Cheerio) -> Supabase news_items table
+// Keys .env file se aati hain, code mein hardcode nahi
+
+require("dotenv").config();
 
 const cheerio = require("cheerio");
 const { createClient } = require("@supabase/supabase-js");
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY; // service key, anon nahi
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+// ---------- Startup check ----------
+console.log("--- Config check ---");
+console.log("URL:", SUPABASE_URL || "MISSING");
+console.log("KEY length:", SUPABASE_KEY ? SUPABASE_KEY.length : "MISSING");
+console.log("--------------------");
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("\nERROR: .env file mein SUPABASE_URL ya SUPABASE_SERVICE_KEY nahi mili.");
+  process.exit(1);
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ---------- 1. Asset keywords (server.js jaise hi) ----------
+// ---------- 1. Asset keywords ----------
 const ASSET_KEYWORDS = {
   DRAM:  ["drama","feud","beef","controversy","scandal","backlash","fight","diss","shade","exposed","canceled"],
   FOMO:  ["viral","trend","sold out","hype","everyone","craze","rush","trending","record"],
@@ -29,12 +44,6 @@ function matchSymbol(title) {
   }
   const all = Object.keys(ASSET_KEYWORDS);
   return all[Math.floor(Math.random() * all.length)];
-}
-
-function spiceHeadline(title) {
-  const e = ["🔥","📈","📉","🚨","💥","⚡","😱","🤯"][Math.floor(Math.random() * 8)];
-  const s = title.length > 80 ? title.slice(0, 77) + "..." : title;
-  return e + " " + s;
 }
 
 function priceImpact() {
@@ -63,15 +72,13 @@ async function fetchHTML(url, retries = 2) {
     } catch (e) {
       console.log(`  fetch fail (${i + 1}/${retries + 1}) ${url}: ${e.message}`);
       if (i === retries) return null;
-      await new Promise(r => setTimeout(r, 2000 * (i + 1))); // backoff
+      await new Promise(r => setTimeout(r, 2000 * (i + 1)));
     }
   }
   return null;
 }
 
 // ---------- 3. Scrapers ----------
-// Har site ka HTML alag hota hai, isliye har site ka apna selector.
-
 async function scrapeCoinDesk() {
   const html = await fetchHTML("https://www.coindesk.com/");
   if (!html) return [];
@@ -79,12 +86,12 @@ async function scrapeCoinDesk() {
   const $ = cheerio.load(html);
   const titles = [];
 
-  // headings ke andar ka text uthao
   $("h2, h3, h4").each((i, el) => {
     const text = $(el).text().trim();
     if (text.length > 25 && text.length < 200) titles.push(text);
   });
 
+  console.log(`  coindesk: ${titles.length} raw`);
   return [...new Set(titles)].slice(0, 20).map(t => ({ title: t, source: "coindesk" }));
 }
 
@@ -100,21 +107,23 @@ async function scrapeHackerNews() {
     if (text.length > 20) titles.push(text);
   });
 
+  console.log(`  hackernews: ${titles.length} raw`);
   return [...new Set(titles)].slice(0, 20).map(t => ({ title: t, source: "hackernews" }));
 }
 
 // ---------- 4. Save to Supabase ----------
+// Headline saaf save hoti hai (bina emoji ke) taake dedup theek kaam kare.
+// Display ke waqt emoji frontend/API laga sakta hai.
 async function saveItems(items) {
   if (items.length === 0) return 0;
 
   const rows = items.map(item => ({
-    headline: spiceHeadline(item.title),
+    headline: item.title,
     source: item.source,
     symbol: matchSymbol(item.title),
     impact: priceImpact(),
   }));
 
-  // upsert = duplicate headline aaya to skip, error nahi
   const { data, error } = await supabase
     .from("news_items")
     .upsert(rows, { onConflict: "headline", ignoreDuplicates: true })
@@ -129,7 +138,7 @@ async function saveItems(items) {
 
 // ---------- 5. Main ----------
 async function runScraper() {
-  console.log("Scraper start:", new Date().toISOString());
+  console.log("\nScraper start:", new Date().toISOString());
 
   const results = await Promise.all([
     scrapeCoinDesk(),
@@ -150,7 +159,6 @@ async function runScraper() {
   return { scraped: all.length, saved };
 }
 
-// Direct run: node scraper.js
 if (require.main === module) {
   runScraper()
     .then(r => { console.log("Done:", r); process.exit(0); })
